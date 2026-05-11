@@ -1,5 +1,5 @@
 require('dotenv').config();
-console.log('MONGODB_URI:', process.env.MONGODB_URI ? '✅ Found' : '❌ Not found');const express = require('express');
+const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -20,10 +20,6 @@ app.use(express.static('public'));
 // ====================== دالة التشفير ======================
 function hashPassword(password) {
     return crypto.createHash('sha256').update(password).digest('hex');
-}
-
-function verifyPassword(password, hash) {
-    return hashPassword(password) === hash;
 }
 
 // ====================== النماذج (Schemas) ======================
@@ -143,7 +139,7 @@ function generatePassword(fullName) {
 
 // ====================== API Routes ======================
 
-// Test endpoint - أول حاجة تجربها
+// Test endpoint
 app.get('/api/test', (req, res) => {
     res.json({
         status: 'ok',
@@ -156,7 +152,6 @@ app.get('/api/test', (req, res) => {
 
 // ====================== الأدمنز ======================
 
-// جلب كل الأدمنز
 app.get('/api/admins', async (req, res) => {
     try {
         const admins = await Admin.find().select('-password');
@@ -167,7 +162,6 @@ app.get('/api/admins', async (req, res) => {
     }
 });
 
-// جلب أدمن واحد
 app.get('/api/admins/:username', async (req, res) => {
     try {
         const admin = await Admin.findOne({ username: req.params.username }).select('-password');
@@ -180,11 +174,7 @@ app.get('/api/admins/:username', async (req, res) => {
         res.status(500).json({ error: 'فشل في جلب البيانات' });
     }
 });
- 
 
-
-
-// إضافة أدمن
 app.post('/api/admins', async (req, res) => {
     try {
         const { fullName, username, password } = req.body;
@@ -205,7 +195,6 @@ app.post('/api/admins', async (req, res) => {
     }
 });
 
-// تحديث أدمن
 app.put('/api/admins/:username', async (req, res) => {
     try {
         const { profile } = req.body;
@@ -221,7 +210,6 @@ app.put('/api/admins/:username', async (req, res) => {
     }
 });
 
-// حذف أدمن
 app.delete('/api/admins/:username', async (req, res) => {
     try {
         const admins = await Admin.find();
@@ -238,7 +226,6 @@ app.delete('/api/admins/:username', async (req, res) => {
 
 // ====================== الطلاب ======================
 
-// جلب كل الطلاب
 app.get('/api/students', async (req, res) => {
     try {
         const students = await Student.find().select('-password');
@@ -249,21 +236,6 @@ app.get('/api/students', async (req, res) => {
     }
 });
 
-// جلب طالب واحد بالـ studentCode
-app.get('/api/students/by-code/:studentCode', async (req, res) => {
-    try {
-        const student = await Student.findOne({ studentCode: req.params.studentCode }).select('-password');
-        if (!student) {
-            return res.status(404).json({ error: 'الطالب غير موجود' });
-        }
-        res.json(student);
-    } catch (error) {
-        console.error('Error fetching student:', error);
-        res.status(500).json({ error: 'فشل في جلب البيانات' });
-    }
-});
-
-// جلب طالب واحد بالـ username (للتسجيل الدخول)
 app.get('/api/students/:username', async (req, res) => {
     try {
         const student = await Student.findOne({ username: req.params.username }).select('-password');
@@ -277,7 +249,6 @@ app.get('/api/students/:username', async (req, res) => {
     }
 });
 
-// إضافة طالب (من الأدمن)
 app.post('/api/students', async (req, res) => {
     try {
         const { fullName, id, subjects, semester } = req.body;
@@ -304,7 +275,6 @@ app.post('/api/students', async (req, res) => {
     }
 });
 
-// تحديث طالب (باستخدام studentCode)
 app.put('/api/students/:studentCode', async (req, res) => {
     try {
         const { fullName, username, studentCode, password, profile, subjects, semester } = req.body;
@@ -317,7 +287,6 @@ app.put('/api/students/:studentCode', async (req, res) => {
         if (subjects !== undefined) updateData.subjects = subjects;
         if (semester !== undefined) updateData.semester = semester;
         
-        // لو فيه كلمة مرور جديدة، هاشها
         if (password && password !== '********') {
             updateData.password = hashPassword(password);
         }
@@ -332,7 +301,6 @@ app.put('/api/students/:studentCode', async (req, res) => {
             return res.status(404).json({ error: 'الطالب غير موجود' });
         }
         
-        // إخفاء كلمة المرور من الرد
         const studentWithoutPassword = updated.toObject();
         delete studentWithoutPassword.password;
         
@@ -343,7 +311,6 @@ app.put('/api/students/:studentCode', async (req, res) => {
     }
 });
 
-// حذف طالب
 app.delete('/api/students/:studentCode', async (req, res) => {
     try {
         const student = await Student.findOneAndDelete({ studentCode: req.params.studentCode });
@@ -368,11 +335,9 @@ app.post('/api/login', async (req, res) => {
             return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
         }
 
-        // البحث عن أدمن
         let user = await Admin.findOne({ username: username.toLowerCase() });
         let userType = 'admin';
 
-        // البحث عن طالب
         if (!user) {
             user = await Student.findOne({ username: username.toLowerCase() });
             userType = 'student';
@@ -383,7 +348,6 @@ app.post('/api/login', async (req, res) => {
             return res.status(401).json({ error: 'بيانات غير صحيحة' });
         }
 
-        // التحقق من كلمة المرور
         const hashedInputPassword = hashPassword(password);
         const isMatch = (hashedInputPassword === user.password);
         
@@ -410,7 +374,7 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// ====================== تسجيل طالب جديد (self-registration) ======================
+// ====================== تسجيل طالب جديد ======================
 app.post('/api/register-student', async (req, res) => {
     try {
         const { fullName, username, password, studentCode, phone, parentName, parentId } = req.body;
@@ -527,8 +491,6 @@ app.delete('/api/notifications/:id', async (req, res) => {
         res.status(500).json({ error: 'خطأ في حذف الإشعار' });
     }
 });
-
-
 
 // ====================== الاختبارات (Exams) ======================
 app.post('/api/exams/check-code', async (req, res) => {
@@ -653,7 +615,6 @@ app.post('/api/nour', async (req, res) => {
     }
 });
 
-
 // ====================== إنشاء مدير تجريبي ======================
 app.post('/api/create-test-admin', async (req, res) => {
     try {
@@ -679,8 +640,6 @@ app.post('/api/create-test-admin', async (req, res) => {
     }
 });
 
-
-
 // ====================== Error Handling ======================
 app.use((err, req, res, next) => {
     console.error('❌ Unhandled Error:', err);
@@ -690,29 +649,6 @@ app.use((err, req, res, next) => {
     });
 });
 
-
-
-// ====================== التصدير لـ Vercel ======================
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📁 Serving static files from "public" folder`);
-    console.log(`🌐 Open http://localhost:${PORT}/login.html`);
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// ====================== التصدير لـ Vercel (مهم جداً) ======================
+// تصدير الـ app مباشرة لـ Vercel بدون server.listen
+module.exports = app;
