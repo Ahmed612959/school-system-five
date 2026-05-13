@@ -224,40 +224,86 @@ function renderStats() {
         const studentsWithGrades = students.filter(s => s.subjects && s.subjects.length > 0);
         const totalStudents = studentsWithGrades.length;
         
-        // أعلى نسبة مئوية (من الطلاب اللي عندهم درجات)
-        const highestPercentage = studentsWithGrades.length ? Math.max(...studentsWithGrades.map(s => {
-            const total = s.subjects.reduce((sum, subj) => sum + (subj.grade || 0), 0);
-            return (total / (s.subjects.length * 100)) * 100;
-        })) : 0;
+        // تعريف المواد والدرجات النهائية لكل مادة
+        const subjectMaxGrades = {
+            "اللغة العربية": 20,
+            "اللغة الإنجليزية": 20,
+            "علوم تطبيقية": 40,
+            "طب باطنة": 20,
+            "تمريض باطني جراحي": 24,
+            "حاسب آلي": 20,
+            "التربية الدينية": 30
+        };
         
-        // متوسط الدرجات (من الطلاب اللي عندهم درجات)
-        const avgGrade = studentsWithGrades.length ? studentsWithGrades.reduce((sum, s) => {
-            const avg = s.subjects.reduce((subSum, subj) => subSum + (subj.grade || 0), 0) / s.subjects.length;
-            return sum + avg;
-        }, 0) / studentsWithGrades.length : 0;
-
-        // عدد الناجحين والراسبين (من الطلاب اللي عندهم درجات)
-        const passingStudents = studentsWithGrades.filter(s => {
-            const total = s.subjects.reduce((sum, subj) => sum + (subj.grade || 0), 0);
-            return (total / (s.subjects.length * 100)) * 100 >= 60;
-        }).length;
-        const failingStudents = totalStudents - passingStudents;
-
-        // المواد الدراسية
-        const subjects = [
-            "مبادئ وأسس تمريض", "اللغة العربية", "اللغة الإنجليزية", "الفيزياء",
-            "الكيمياء", "التشريح / علم وظائف الأعضاء", "التربية الدينية", "الكمبيوتر"
-        ];
-        
-        // أعلى درجة في كل مادة (من الطلاب اللي عندهم درجات)
-        const highestGrades = subjects.map(subject => {
-            const maxGrade = studentsWithGrades.length ? Math.max(...studentsWithGrades.map(s => {
-                const subj = s.subjects.find(sub => sub.name === subject);
-                return subj ? (subj.grade || 0) : 0;
-            })) : 0;
-            return { subject, maxGrade };
+        // حساب النسبة المئوية لكل طالب (حسب المواد المتوفرة عنده)
+        const studentPercentages = studentsWithGrades.map(student => {
+            let totalEarned = 0;
+            let totalPossible = 0;
+            
+            student.subjects.forEach(subject => {
+                const maxGrade = subjectMaxGrades[subject.name];
+                if (maxGrade) {
+                    totalEarned += subject.grade || 0;
+                    totalPossible += maxGrade;
+                }
+            });
+            
+            const percentage = totalPossible > 0 ? (totalEarned / totalPossible) * 100 : 0;
+            return { 
+                student: student, 
+                percentage: percentage,
+                totalEarned: totalEarned,
+                totalPossible: totalPossible
+            };
         });
-
+        
+        // ترتيب الطلاب تنازلياً حسب النسبة
+        const sortedByPercentage = [...studentPercentages].sort((a, b) => b.percentage - a.percentage);
+        
+        // أعلى طالب (الأول في الترتيب)
+        const topStudent = sortedByPercentage.length > 0 ? sortedByPercentage[0] : null;
+        
+        // أعلى نسبة مئوية
+        const highestPercentage = sortedByPercentage.length ? sortedByPercentage[0].percentage : 0;
+        
+        // متوسط الدرجات المئوية
+        const avgGrade = sortedByPercentage.length ? 
+            sortedByPercentage.reduce((a, b) => a + b.percentage, 0) / sortedByPercentage.length : 0;
+        
+        // عدد الناجحين (نسبة 60% فأكثر)
+        const passingStudents = sortedByPercentage.filter(p => p.percentage >= 60).length;
+        const failingStudents = totalStudents - passingStudents;
+        
+        // حساب أعلى درجة في كل مادة
+        const highestGrades = Object.keys(subjectMaxGrades).map(subject => {
+            let maxGrade = 0;
+            let topStudentName = "";
+            studentsWithGrades.forEach(student => {
+                const subj = student.subjects.find(s => s.name === subject);
+                if (subj && (subj.grade || 0) > maxGrade) {
+                    maxGrade = subj.grade || 0;
+                    topStudentName = student.fullName;
+                }
+            });
+            return { subject, maxGrade, maxPossible: subjectMaxGrades[subject], topStudent: topStudentName };
+        });
+        
+        // حساب متوسط كل مادة
+        const subjectAverages = Object.keys(subjectMaxGrades).map(subject => {
+            let total = 0;
+            let count = 0;
+            studentsWithGrades.forEach(student => {
+                const subj = student.subjects.find(s => s.name === subject);
+                if (subj && subj.grade !== undefined) {
+                    total += subj.grade;
+                    count++;
+                }
+            });
+            const average = count > 0 ? (total / count).toFixed(1) : 0;
+            return { subject, average, maxPossible: subjectMaxGrades[subject] };
+        });
+        
+        // بناء HTML للإحصائيات
         statsSection.innerHTML = `
             <div class="stats-grid">
                 <div class="stat-item" id="total-students">
@@ -267,7 +313,7 @@ function renderStats() {
                     <p><i class="fas fa-trophy"></i> أعلى نسبة مئوية: ${highestPercentage.toFixed(1)}%</p>
                 </div>
                 <div class="stat-item" id="average-grade">
-                    <p><i class="fas fa-chart-line"></i> متوسط الدرجات: ${avgGrade.toFixed(1)}</p>
+                    <p><i class="fas fa-chart-line"></i> متوسط النسبة: ${avgGrade.toFixed(1)}%</p>
                 </div>
                 <div class="stat-item" id="passing-students">
                     <p><i class="fas fa-check-circle"></i> عدد الناجحين: ${passingStudents}</p>
@@ -275,9 +321,42 @@ function renderStats() {
                 <div class="stat-item" id="failing-students">
                     <p><i class="fas fa-times-circle"></i> عدد الراسبين: ${failingStudents}</p>
                 </div>
+            </div>
+            
+            ${topStudent ? `
+            <div class="stats-grid" style="margin-top: 20px; background: linear-gradient(135deg, #d4af37, #b8962e); border-radius: 15px; padding: 15px;">
+                <div class="stat-item" style="background: none; box-shadow: none; text-align: center;">
+                    <p><i class="fas fa-crown" style="color: #fff; font-size: 2rem;"></i></p>
+                    <p style="color: #1a2526; font-size: 1.2rem; font-weight: bold;">🏆 أعلى طالب في جميع النتائج 🏆</p>
+                    <p style="color: #1a2526; font-size: 1.5rem; font-weight: bold; margin: 10px 0;">${topStudent.student.fullName}</p>
+                    <p style="color: #1a2526;">رقم الجلوس: ${topStudent.student.studentCode}</p>
+                    <p style="color: #1a2526;">المجموع: ${topStudent.totalEarned} / ${topStudent.totalPossible}</p>
+                    <p style="color: #1a2526; font-size: 1.3rem;">النسبة: ${topStudent.percentage.toFixed(1)}%</p>
+                </div>
+            </div>
+            ` : ''}
+            
+            <div class="stats-grid" style="margin-top: 20px;">
+                <div class="stat-item">
+                    <p><i class="fas fa-chart-bar"></i> <strong>📊 أعلى الدرجات في كل مادة</strong></p>
+                </div>
                 ${highestGrades.map(item => `
                     <div class="stat-item">
-                        <p><i class="fas fa-star"></i> أعلى درجة في ${item.subject}: ${item.maxGrade}</p>
+                        <p><i class="fas fa-star"></i> <strong>${item.subject}</strong><br>
+                        ${item.maxGrade} / ${item.maxPossible}<br>
+                        <small style="color: #666;">الطالب: ${item.topStudent || '-'}</small></p>
+                    </div>
+                `).join('')}
+            </div>
+            
+            <div class="stats-grid" style="margin-top: 20px;">
+                <div class="stat-item">
+                    <p><i class="fas fa-chart-line"></i> <strong>📈 متوسط الدرجات</strong></p>
+                </div>
+                ${subjectAverages.map(item => `
+                    <div class="stat-item">
+                        <p><i class="fas fa-calculator"></i> ${item.subject}<br>
+                        ${item.average} / ${item.maxPossible}</p>
                     </div>
                 `).join('')}
             </div>
