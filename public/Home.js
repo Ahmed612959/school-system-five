@@ -45,7 +45,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         tableBody.innerHTML = '';
         if (notifications.length === 0) {
-            tableBody.innerHTML = '<tr><td colspan="2">لا توجد إشعارات حاليًا</td></tr>';
+            tableBody.innerHTML = '<tr><td colspan="2">لا توجد إشعارات حاليًا</td></td>';
             return;
         }
 
@@ -83,6 +83,66 @@ document.addEventListener('DOMContentLoaded', async function() {
         ).join('');
     }
 
+    // ====================== المواد والدرجات النهائية ======================
+    const subjectMaxGrades = {
+        "اللغة العربية": 20,
+        "اللغة الإنجليزية": 20,
+        "علوم تطبيقية": 40,
+        "طب باطنة": 20,
+        "تمريض باطني جراحي": 24,
+        "حاسب آلي": 20,
+        "الدين": 30
+    };
+    const TOTAL_POSSIBLE = 174;
+
+    // ترتيب المواد للعرض
+    const orderedSubjects = [
+        "اللغة العربية",
+        "اللغة الإنجليزية",
+        "علوم تطبيقية",
+        "طب باطنة",
+        "تمريض باطني جراحي",
+        "حاسب آلي",
+        "الدين"
+    ];
+
+    // حساب النسبة المئوية للطالب
+    function calculateStudentPercentage(student) {
+        if (!student.subjects || student.subjects.length === 0) return 0;
+        
+        let totalEarned = 0;
+        
+        student.subjects.forEach(subject => {
+            totalEarned += subject.grade || 0;
+        });
+        
+        return (totalEarned / TOTAL_POSSIBLE) * 100;
+    }
+    
+    // حساب المجموع الكلي للطالب
+    function calculateStudentTotal(student) {
+        if (!student.subjects) return 0;
+        
+        let total = 0;
+        student.subjects.forEach(subject => {
+            total += subject.grade || 0;
+        });
+        return total;
+    }
+
+    // الحصول على قائمة المواد مع الدرجات
+    function getStudentSubjectsWithGrades(student) {
+        const result = [];
+        
+        orderedSubjects.forEach(subjName => {
+            const subject = student.subjects?.find(s => s.name === subjName);
+            const grade = subject ? (subject.grade || 0) : 0;
+            result.push({ name: subjName, grade: grade, max: subjectMaxGrades[subjName] });
+        });
+        
+        return result;
+    }
+
     function renderDashboard() {
         const user = JSON.parse(localStorage.getItem('loggedInUser') || 'null');
         const dashboard = document.getElementById('dashboard');
@@ -99,30 +159,39 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         dashboard.style.display = 'block';
 
-        const total = student.subjects.reduce((sum, s) => sum + (s.grade || 0), 0);
-        const percentage = (total / (student.subjects.length * 100)) * 100;
+        const percentage = calculateStudentPercentage(student);
+        const total = calculateStudentTotal(student);
+        const subjectsWithGrades = getStudentSubjectsWithGrades(student);
 
-        document.getElementById('student-percentage').textContent = `نسبة نجاحك: ${percentage.toFixed(1)}%`;
-        document.getElementById('class-average').textContent = `متوسط الفصل: ${calculateClassAverage().toFixed(1)}`;
+        document.getElementById('student-percentage').innerHTML = `📊 نسبة نجاحك: <strong>${percentage.toFixed(1)}%</strong><br>
+        <small style="font-size: 12px;">(المجموع: ${total} / ${TOTAL_POSSIBLE})</small>`;
+        document.getElementById('class-average').innerHTML = `📈 متوسط الفصل: <strong>${calculateClassAverage().toFixed(1)}%</strong>`;
 
         const ctx = document.getElementById('gradesChart')?.getContext('2d');
         if (ctx && window.Chart) {
-            // تدمير الرسم البياني القديم إذا وجد
             if (window.gradesChart) window.gradesChart.destroy();
             window.gradesChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: student.subjects.map(s => s.name),
+                    labels: subjectsWithGrades.map(s => s.name),
                     datasets: [{
                         label: 'درجاتك',
-                        data: student.subjects.map(s => s.grade || 0),
+                        data: subjectsWithGrades.map(s => s.grade),
                         backgroundColor: 'rgba(212, 175, 55, 0.8)',
                         borderColor: '#d4af37',
                         borderWidth: 2
                     }]
                 },
                 options: {
-                    scales: { y: { beginAtZero: true, max: 100 } },
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: { 
+                        y: { 
+                            beginAtZero: true, 
+                            max: 100,
+                            title: { display: true, text: 'الدرجة' }
+                        } 
+                    },
                     plugins: { legend: { display: false } }
                 }
             });
@@ -132,10 +201,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     function calculateClassAverage() {
         const studentsWithGrades = students.filter(s => s.subjects && s.subjects.length > 0);
         if (!studentsWithGrades.length) return 0;
-        const avgs = studentsWithGrades.map(s => {
-            return s.subjects.reduce((a, b) => a + (b.grade || 0), 0) / s.subjects.length;
-        });
-        return avgs.reduce((a, b) => a + b, 0) / avgs.length;
+        
+        const percentages = studentsWithGrades.map(s => calculateStudentPercentage(s));
+        const sum = percentages.reduce((a, b) => a + b, 0);
+        return sum / percentages.length;
     }
 
     // البحث عن الطالب
@@ -145,11 +214,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         const studentCode = document.getElementById('search-id').value.trim();
 
         if (!name || !studentCode) {
-            showToast('يرجى إدخال الاسم ورقم الجلوس معًا!', 'error');
+            showToast('⚠️ يرجى إدخال الاسم ورقم الجلوس معًا!', 'error');
             return;
         }
 
-        // 🔑 البحث باستخدام studentCode بدلاً من id
         const student = students.find(s => 
             s.fullName.includes(name) && s.studentCode === studentCode
         );
@@ -159,49 +227,60 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (student) {
             renderStudentResult(student, resultBody, violationsBody);
-            showToast('تم العثور على الطالب بنجاح!', 'success');
+            showToast('✅ تم العثور على الطالب بنجاح!', 'success');
         } else {
-            resultBody.innerHTML = '<tr><td colspan="4">لا توجد نتيجة بهذا الاسم ورقم الجلوس!</td></tr>';
-            violationsBody.innerHTML = '<tr><td colspan="5">لا توجد نتيجة!</td></tr>';
-            showToast('الطالب غير موجود! تأكد من رقم الجلوس', 'error');
+            resultBody.innerHTML = '<tr><td colspan="4">❌ لا توجد نتيجة بهذا الاسم ورقم الجلوس!</td></tr>';
+            violationsBody.innerHTML = '<tr><td colspan="5">❌ لا توجد نتيجة!</td></tr>';
+            showToast('❌ الطالب غير موجود! تأكد من رقم الجلوس', 'error');
         }
     });
 
     function renderStudentResult(student, resultBody, violationsBody) {
         if (!student.subjects || student.subjects.length === 0) {
-            resultBody.innerHTML = '<tr><td colspan="4">لا توجد درجات مسجلة لهذا الطالب</td></tr>';
-            violationsBody.innerHTML = '<tr><td colspan="5">لا توجد مخالفات</td></tr>';
+            resultBody.innerHTML = '<tr><td colspan="4">📭 لا توجد درجات مسجلة لهذا الطالب</td></tr>';
+            violationsBody.innerHTML = '<tr><td colspan="5">✅ لا توجد مخالفات</td></tr>';
             return;
         }
 
-        const total = student.subjects.reduce((sum, s) => sum + (s.grade || 0), 0);
-        const percentage = (total / (student.subjects.length * 100)) * 100;
-        const cls = percentage >= 85 ? 'high-percentage' : percentage >= 60 ? 'medium-percentage' : 'low-percentage';
+        const total = calculateStudentTotal(student);
+        const percentage = calculateStudentPercentage(student);
+        
+        let percentageClass = '';
+        if (percentage >= 85) percentageClass = 'high-percentage';
+        else if (percentage >= 60) percentageClass = 'medium-percentage';
+        else percentageClass = 'low-percentage';
 
-        // استخدام studentCode بدلاً من id
-        const labels = ['الاسم', 'رقم الجلوس', ...student.subjects.map(s => s.name)];
-        const values = [student.fullName, student.studentCode, ...student.subjects.map(s => s.grade || 0)];
+        // الحصول على المواد مع الدرجات
+        const subjectsWithGrades = getStudentSubjectsWithGrades(student);
+        
+        const labels = ['الاسم', 'رقم الجلوس', ...subjectsWithGrades.map(s => s.name)];
+        const values = [student.fullName, student.studentCode, ...subjectsWithGrades.map(s => `${s.grade} / ${s.max}`)];
 
         resultBody.innerHTML = `
             <tr>
                 <td>${labels.map((l,i) => i < labels.length-1 ? l+'<hr>' : l).join('')}</td>
                 <td>${values.map((v,i) => i < values.length-1 ? v+'<hr>' : v).join('')}</td>
-                <td>${total}</td>
-                <td class="${cls}">${percentage.toFixed(1)}%</td>
+                <td>${total} / ${TOTAL_POSSIBLE}</td>
+                <td class="${percentageClass}">${percentage.toFixed(1)}%</td>
             </tr>
         `;
 
-        // استخدام studentCode للمخالفات
+        // المخالفات الخاصة بالطالب
         const studentVios = violations.filter(v => v.studentId === student.studentCode);
-        violationsBody.innerHTML = studentVios.length ? studentVios.map(v => `
-            <tr>
-                <td>${v.type === 'warning' ? 'إنذار' : 'مخالفة'}</td>
-                <td>${v.reason}</td>
-                <td>${v.penalty}</td>
-                <td>${v.parentSummons ? 'نعم' : 'لا'}</td>
-                <td>${v.date}</td>
-            </tr>
-        `).join('') : '<tr><td colspan="5">لا توجد مخالفات</td></tr>';
+        
+        if (studentVios.length > 0) {
+            violationsBody.innerHTML = studentVios.map(v => `
+                <tr>
+                    <td>${v.type === 'warning' ? '⚠️ إنذار' : '🚫 مخالفة'}</td>
+                    <td>${v.reason}</td>
+                    <td>${v.penalty}</td>
+                    <td>${v.parentSummons ? '✅ نعم' : '❌ لا'}</td>
+                    <td>${v.date}</td>
+                </tr>
+            `).join('');
+        } else {
+            violationsBody.innerHTML = '<tr><td colspan="5">✅ لا توجد مخالفات مسجلة</td></tr>';
+        }
     }
 
     function renderWelcomeMessage() {
@@ -212,12 +291,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (user) {
             const name = user.fullName || user.username;
             const msg = user.type === 'admin' 
-                ? `أهلًا يا قائد العمليات، ${name}! جاهز للانطلاق؟`
-                : `مرحبًا يا نجم، ${name}! نتايجك في انتظارك!`;
+                ? `👋 أهلًا يا قائد العمليات، ${name}! جاهز للانطلاق؟ 🛠️`
+                : `🎉 مرحبًا يا نجم، ${name}! نتايجك في انتظارك! 📚`;
             welcome.textContent = msg;
             showToast(msg, 'success');
         } else {
-            welcome.textContent = 'مرحبًا بك! سجل الدخول لرؤية نتائجك';
+            welcome.textContent = '👋 مرحبًا بك! سجل الدخول لرؤية نتائجك';
         }
     }
 
