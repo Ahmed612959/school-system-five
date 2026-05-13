@@ -164,12 +164,36 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
-   function renderResults(filter = '') {
+  function renderResults(filter = '') {
     const tableBody = document.getElementById('results-table-body');
     if (tableBody) {
         tableBody.innerHTML = '';
         
-        // تصفية: عرض الطلاب اللي عندهم درجات فقط (subjects مش فاضي)
+        // المواد المطلوب عرضها (حسب المواد الجديدة)
+        const requiredSubjects = [
+            "اللغة العربية",
+            "اللغة الإنجليزية", 
+            "علوم تطبيقية",
+            "طب باطنة",
+            "تمريض باطني جراحي",
+            "حاسب آلي",
+            "الدين"
+        ];
+        
+        // الدرجات النهائية لكل مادة
+        const subjectMax = {
+            "اللغة العربية": 20,
+            "اللغة الإنجليزية": 20,
+            "علوم تطبيقية": 40,
+            "طب باطنة": 20,
+            "تمريض باطني جراحي": 24,
+            "حاسب آلي": 20,
+            "الدين": 30
+        };
+        
+        const TOTAL_POSSIBLE = 174;
+        
+        // تصفية: عرض الطلاب اللي عندهم درجات فقط
         const studentsWithGrades = students.filter(student => 
             student.subjects && student.subjects.length > 0
         );
@@ -180,27 +204,38 @@ document.addEventListener('DOMContentLoaded', function() {
         );
         
         filteredStudents.forEach(student => {
-            const total = student.subjects.reduce((sum, s) => sum + (s.grade || 0), 0);
-            const percentage = student.subjects.length ? (total / (student.subjects.length * 100)) * 100 : 0;
+            // حساب المجموع حسب المواد الجديدة
+            let total = 0;
+            const subjectGrades = [];
+            
+            requiredSubjects.forEach(subjName => {
+                const subject = student.subjects.find(s => s.name === subjName);
+                const grade = subject ? (subject.grade || 0) : 0;
+                subjectGrades.push({ name: subjName, grade: grade });
+                total += grade;
+            });
+            
+            const percentage = (total / TOTAL_POSSIBLE) * 100;
             let percentageClass = '';
             if (percentage >= 85) percentageClass = 'high-percentage';
             else if (percentage >= 60) percentageClass = 'medium-percentage';
             else percentageClass = 'low-percentage';
-
-            const labels = ['اسم الطالب', 'رقم الجلوس'].concat(student.subjects.map(s => s.name));
-            const values = [student.fullName, student.studentCode].concat(student.subjects.map(s => s.grade || 0));
+            
+            const labels = ['اسم الطالب', 'رقم الجلوس', ...subjectGrades.map(s => s.name)];
+            const values = [student.fullName, student.studentCode, ...subjectGrades.map(s => s.grade || 0)];
+            
             const labelsWithSeparators = labels.map((label, index) => 
                 index < labels.length - 1 ? `${label}<hr class="table-separator">` : label
             ).join('');
             const valuesWithSeparators = values.map((value, index) => 
                 index < values.length - 1 ? `${value}<hr class="table-separator">` : value
             ).join('');
-
+            
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${labelsWithSeparators}</td>
                 <td>${valuesWithSeparators}</td>
-                <td>${total}</td>
+                <td>${total} / ${TOTAL_POSSIBLE}</td>
                 <td class="${percentageClass}">${percentage.toFixed(1)}%</td>
                 <td>
                     <button class="edit-btn" onclick="editStudent('${student.studentCode}')"><i class="fas fa-edit"></i></button>
@@ -211,12 +246,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 }
-
-document.getElementById('search-input')?.addEventListener('input', function() {
-    const searchTerm = this.value.trim();
-    renderResults(searchTerm);
-});
-
 function renderStats() {
     const statsSection = document.getElementById('stats-section');
     if (statsSection) {
@@ -224,7 +253,7 @@ function renderStats() {
         const studentsWithGrades = students.filter(s => s.subjects && s.subjects.length > 0);
         const totalStudents = studentsWithGrades.length;
         
-        // تعريف المواد والدرجات النهائية لكل مادة
+        // تعريف المواد والدرجات النهائية لكل مادة (المجموع الكلي 174)
         const subjectMaxGrades = {
             "اللغة العربية": 20,
             "اللغة الإنجليزية": 20,
@@ -232,10 +261,12 @@ function renderStats() {
             "طب باطنة": 20,
             "تمريض باطني جراحي": 24,
             "حاسب آلي": 20,
-            "التربية الدينية": 30
+            "الدين": 30
         };
         
-        // حساب النسبة المئوية لكل طالب (حسب المواد المتوفرة عنده)
+        const TOTAL_POSSIBLE = 174; // المجموع الكلي
+        
+        // حساب النسبة المئوية لكل طالب
         const studentPercentages = studentsWithGrades.map(student => {
             let totalEarned = 0;
             let totalPossible = 0;
@@ -278,14 +309,16 @@ function renderStats() {
         const highestGrades = Object.keys(subjectMaxGrades).map(subject => {
             let maxGrade = 0;
             let topStudentName = "";
+            let topStudentCode = "";
             studentsWithGrades.forEach(student => {
                 const subj = student.subjects.find(s => s.name === subject);
                 if (subj && (subj.grade || 0) > maxGrade) {
                     maxGrade = subj.grade || 0;
                     topStudentName = student.fullName;
+                    topStudentCode = student.studentCode;
                 }
             });
-            return { subject, maxGrade, maxPossible: subjectMaxGrades[subject], topStudent: topStudentName };
+            return { subject, maxGrade, maxPossible: subjectMaxGrades[subject], topStudent: topStudentName, topStudentCode: topStudentCode };
         });
         
         // حساب متوسط كل مادة
@@ -330,7 +363,7 @@ function renderStats() {
                     <p style="color: #1a2526; font-size: 1.2rem; font-weight: bold;">🏆 أعلى طالب في جميع النتائج 🏆</p>
                     <p style="color: #1a2526; font-size: 1.5rem; font-weight: bold; margin: 10px 0;">${topStudent.student.fullName}</p>
                     <p style="color: #1a2526;">رقم الجلوس: ${topStudent.student.studentCode}</p>
-                    <p style="color: #1a2526;">المجموع: ${topStudent.totalEarned} / ${topStudent.totalPossible}</p>
+                    <p style="color: #1a2526;">المجموع: ${topStudent.totalEarned} / ${TOTAL_POSSIBLE}</p>
                     <p style="color: #1a2526; font-size: 1.3rem;">النسبة: ${topStudent.percentage.toFixed(1)}%</p>
                 </div>
             </div>
@@ -344,7 +377,7 @@ function renderStats() {
                     <div class="stat-item">
                         <p><i class="fas fa-star"></i> <strong>${item.subject}</strong><br>
                         ${item.maxGrade} / ${item.maxPossible}<br>
-                        <small style="color: #666;">الطالب: ${item.topStudent || '-'}</small></p>
+                        <small style="color: #666;">الطالب: ${item.topStudent || '-'} (${item.topStudentCode || ''})</small></p>
                     </div>
                 `).join('')}
             </div>
